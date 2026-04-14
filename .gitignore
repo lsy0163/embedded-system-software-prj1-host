@@ -1,1 +1,5 @@
 .codex
+
+# C++ build artifacts
+prj1-host-skeleton/*.o
+prj1-host-skeleton/test
