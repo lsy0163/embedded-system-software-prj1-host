@@ -139,7 +139,7 @@ int Embedded::Proj1::Hello() {
      * ------------------------------------------------------------------ */
 
     if (fd_ < 0) {
-        cerr << "[ERROR] Hello - fd_ < 0\n";
+        cerr << "[ERROR] Bad file descriptor (_fd < 0)\n";
         return -EBADF;
     }
 
@@ -176,7 +176,7 @@ int Embedded::Proj1::nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10
      * - Link: https://elixir.bootlin.com/linux/v5.15/source/include/uapi/linux/nvme_ioctl.h
      * ------------------------------------------------------------------ */
     if (fd_ < 0) {
-        cerr << "[ERROR] passthru fd_ < 0\n";
+        cerr << "[ERROR] Bad file descriptor (_fd < 0)\n";
         return -EBADF;
     }
 
