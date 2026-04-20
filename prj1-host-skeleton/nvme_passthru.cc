@@ -35,16 +35,14 @@ int Embedded::Proj1::Open(const std::string &dev) {
     return 0;
 }
 
-// firmware 코드에서 dword[10], dword[11], dowrd[12] 를 필요
-// call nvme_passthru
 int Embedded::Proj1::ImageWrite(const std::vector<uint8_t> &buf) {
     if (buf.empty()) return -EINVAL;
     if (buf.size() > MAX_BUFLEN) {
         cerr << "[ERROR] Image size exceeds the maximum transfer size limit." << endl;
         return -EINVAL;
     }
-    if (fd_ < 0) {
-        cerr << "[ERROR] ImageWrite - fd_ < 0\n";
+    if (fd_ < 0) {                      
+        cerr << "[ERROR] Bad file descriptor (_fd < 0)\n";
         return -EBADF;
     }
 
@@ -54,7 +52,7 @@ int Embedded::Proj1::ImageWrite(const std::vector<uint8_t> &buf) {
      * Return 0 on success, or a negative error code on failure.
      * ------------------------------------------------------------------ */
 
-    size_t num_blocks = (buf.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+    size_t num_blocks = (buf.size() + PAGE_SIZE - 1) / PAGE_SIZE;   // Calculate the number of pages needed to write the entire buffer
     uint64_t lba = 0;
     uint32_t cdw10 = 0;
     uint32_t cdw11 = 0;
@@ -63,14 +61,16 @@ int Embedded::Proj1::ImageWrite(const std::vector<uint8_t> &buf) {
         uint32_t data_len = PAGE_SIZE;
         void* data_addr = (void*)(buf.data() + i * PAGE_SIZE);
 
-        if (i == num_blocks - 1 && (buf.size() % PAGE_SIZE != 0)) { // 마지막 블럭인 경우
+        if (i == num_blocks - 1 && (buf.size() % PAGE_SIZE != 0)) { 
             data_len = buf.size() % PAGE_SIZE;
         }
 
         cdw10 = lba & 0xFFFFFFF;
         cdw11 = (lba >> 32) & 0xFFFFFFFF;
         
-        int ret = nvme_passthru(NVME_CMD_WRITE, NSID, cdw10, cdw11, data_addr, data_len, NULL);
+        uint32_t nlb = (data_len + PAGE_SIZE - 1) / PAGE_SIZE - 1;
+        int ret = nvme_passthru(NVME_CMD_WRITE, NSID, cdw10, cdw11, nlb, 0, 0, 0,
+                                data_addr, data_len, NULL);
 
         if (ret < 0) {
             cerr << "[ERROR]" << strerror(errno) << endl;
@@ -89,17 +89,16 @@ int Embedded::Proj1::ImageRead(std::vector<uint8_t> &buf, size_t size) {
         cerr << "[ERROR] Requested read size exceeds the maximum transfer size limit." << endl;
         return -EINVAL;
     }
-
+    if (fd_ < 0) {             
+        cerr << "[ERROR] Bad file descriptor (_fd < 0)\n";
+        return -EBADF;
+    }
+    
     /* ------------------------------------------------------------------
      * TODO: Implement this function.
      * 
      * Return 0 on success, or a negative error code on failure.
      * ------------------------------------------------------------------ */
-
-    if (fd_ < 0) {
-        cerr << "[ERROR] ImageRead - fd_ < 0\n";
-        return -EBADF;
-    }
 
     buf.resize(size);
     size_t num_blocks = (size + PAGE_SIZE - 1) / PAGE_SIZE;
@@ -118,7 +117,9 @@ int Embedded::Proj1::ImageRead(std::vector<uint8_t> &buf, size_t size) {
         cdw10 = lba & 0xFFFFFFF;
         cdw11 = (lba >> 32) & 0xFFFFFFFF;
 
-        int ret = nvme_passthru(NVME_CMD_READ, NSID, cdw10, cdw11, data_addr, data_len, NULL);
+        uint32_t nlb = (data_len + PAGE_SIZE - 1) / PAGE_SIZE - 1;
+        int ret = nvme_passthru(NVME_CMD_READ, NSID, cdw10, cdw11, nlb, 0, 0, 0,
+                                data_addr, data_len, NULL);
         
         if (ret < 0) {
             cerr << "[ERROR]" << strerror(errno) << endl;
@@ -145,7 +146,8 @@ int Embedded::Proj1::Hello() {
     uint32_t cdw10 = 0;
     uint32_t cdw11 = 0;
 
-    int ret = nvme_passthru(NVME_CMD_HELLO, NSID, cdw10, cdw11, 0, 0, NULL);
+    int ret = nvme_passthru(NVME_CMD_HELLO, NSID, cdw10, cdw11, 0, 0, 0, 0, NULL, 0,
+                            NULL);
 
     if (ret < 0) {
         cerr << "[ERROR] Hello command failed with error code: " << ret << endl;
@@ -157,8 +159,10 @@ int Embedded::Proj1::Hello() {
     return 0; // placeholder
 }
 
-int Embedded::Proj1::nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10, uint32_t cdw11, \
-    void* data_addr, uint32_t data_len, uint32_t* res)
+int Embedded::Proj1::nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10,
+                                   uint32_t cdw11, uint32_t cdw12, uint32_t cdw13,
+                                   uint32_t cdw14, uint32_t cdw15, void *data,
+                                   uint32_t data_len, uint32_t *result)
 {
     /* ------------------------------------------------------------------
      * TODO: Implement this function.
@@ -178,12 +182,15 @@ int Embedded::Proj1::nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10
 
     struct nvme_passthru_cmd cmd = {0,};
     cmd.opcode = opcode;
-    cmd.nsid = NSID;
+    cmd.nsid = nsid;
     cmd.cdw10 = cdw10;
     cmd.cdw11 = cdw11;
+    cmd.cdw12 = cdw12;
+    cmd.cdw13 = cdw13;
+    cmd.cdw14 = cdw14;
+    cmd.cdw15 = cdw15;
+    cmd.addr = reinterpret_cast<uint64_t>(data);
     cmd.data_len = data_len;
-    cmd.addr = (uint64_t)data_addr;
-    cmd.cdw12 = (data_len + PAGE_SIZE - 1) / PAGE_SIZE - 1;
 
     int ret = ioctl(fd_, NVME_IOCTL_IO_CMD, &cmd);
     
@@ -192,8 +199,8 @@ int Embedded::Proj1::nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10
         return ret;
     }
 
-    if (res) {
-        *res = cmd.result;
+    if (result) {
+        *result = cmd.result;
     }
 
     return 0; // success

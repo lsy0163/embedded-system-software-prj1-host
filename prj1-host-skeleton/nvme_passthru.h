@@ -21,7 +21,9 @@ namespace Embedded {
             int Hello();
         private:
             int fd_;
-            int nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10, uint32_t cdw11, \
-                void* data_addr, uint32_t data_len, uint32_t* res);
+            int nvme_passthru(uint8_t opcode, uint32_t nsid, uint32_t cdw10,
+                               uint32_t cdw11, uint32_t cdw12, uint32_t cdw13,
+                               uint32_t cdw14, uint32_t cdw15, void *data,
+                               uint32_t data_len, uint32_t *result);
     };
 }
